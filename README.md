@@ -46,3 +46,11 @@ posture-pal-ai/
 ├── eda_advanced.py                 # EDA script (Heatmaps, Scatters, Feature Importance)
 ├── preprocess_outliers.py          # Automated data cleaning via class-based IQR method
 └── posture_xgboost_production.pkl  # Trained model and Label Encoder (Pickle file)
+```
+
+## 🚀 Installation & Usage
+
+**1. Clone repository**
+   ```bash
+   git clone [https://github.com/UsernameKamu/posture-pal-ai.git](https://github.com/UsernameKamu/posture-pal-ai.git)
+   cd posture-pal-ai
