@@ -1,25 +1,25 @@
 # Posture AI - Real-Time Posture Tracker
 
-Aplikasi pelacak postur tubuh cerdas berbasis *Computer Vision* dan *Machine Learning*. Aplikasi ini secara *real-time* menganalisis tangkapan *webcam* untuk mendeteksi apakah postur pengguna saat duduk di depan komputer berada dalam kondisi tegak (Normal), membungkuk ke depan (Forward), atau bersandar (Back).
+An intelligent posture tracking application powered by Computer Vision and Machine Learning. The app analyzes webcam footage in real-time to detect the user's posture while sitting at a computer, classifying it as upright (Normal), leaning forward (Forward), or leaning back (Back).
 
-Proyek ini dibangun menggunakan **Google MediaPipe** untuk ekstraksi titik tubuh *(pose estimation)* dan **XGBoost** sebagai otak *Machine Learning* yang telah dioptimasi menggunakan **Bayesian Optimization (Optuna)**.
-
----
-
-## ✨ Fitur Utama
-
-- **👁️ Real-Time Inference:** Memproses tangkapan *webcam* tanpa *lag* menggunakan arsitektur MediaPipe Tasks API.
-- **🧠 Advanced Feature Engineering:** Model tidak hanya menelan data mentah, tetapi menggunakan ekstraksi anatomi spesifik seperti:
-  - *Nose-to-Shoulder Distance* (Mendeteksi *Forward Head Posture* / Leher Kura-kura).
-  - *Ear-Shoulder Asymmetry* (Mendeteksi kemiringan kepala).
-  - *Shoulder Width* (Mendeteksi postur membungkuk/menyusut).
-- **🎯 Smart Thresholding:** Menggunakan ambang batas kustom (Normal: 70%, Back: 80%) untuk mencegah *flickering* dan memastikan AI sangat yakin sebelum mengubah status postur.
-- **⏱️ Temporal Smoothing & Timer:** Mencegah perubahan status yang terlalu cepat (berkedip) dan memberikan peringatan visual jika postur pengguna buruk selama lebih dari 10 detik.
-- **🔄 Active Learning Feedback:** Pengguna dapat menekan tombol `f` saat aplikasi berjalan untuk memberikan koreksi langsung kepada AI. Data ini akan disimpan di `dataset_feedback.csv` untuk melatih ulang model agar semakin pintar beradaptasi dengan kebiasaan unik pengguna.
+This project was built using **Google MediaPipe** for body landmark extraction (pose estimation) and **XGBoost** as the machine learning engine, optimized via **Bayesian Optimization (Optuna)**.
 
 ---
 
-## 🛠️ Tech Stack
+## Key Features
+
+- **👁️ Real-Time Inference:** Processes webcam feeds without lag using the MediaPipe Tasks API architecture.
+- **🧠 Advanced Feature Engineering:** The model goes beyond raw data by utilizing specific anatomical feature extraction, such as:
+  - *Nose-to-Shoulder Distance* (Detects forward head posture/"turtle neck").
+  - *Ear-Shoulder Asymmetry* (Detects head tilting).
+  - *Shoulder Width* (Detects slouching or hunched posture).
+- **🎯 Smart Thresholding:** Uses custom thresholds (Normal: 70%, Back: 80%) to prevent flickering and ensure high AI confidence before changing posture status.
+- **⏱️ Temporal Smoothing & Timer:** Prevents rapid status switching (flickering) and triggers a visual alert if poor posture persists for more than 10 seconds.
+- **🔄 Active Learning Feedback:** Users can press the `f` key while the app is running to provide direct feedback to the AI. This data is saved to `dataset_feedback.csv` to retrain the model, allowing it to better adapt to the user's unique habits.
+
+---
+
+## Tech Stack
 
 - **Python 3.x**
 - **Computer Vision:** OpenCV, MediaPipe (Google APIs)
@@ -29,20 +29,20 @@ Proyek ini dibangun menggunakan **Google MediaPipe** untuk ekstraksi titik tubuh
 
 ---
 
-## 📂 Struktur Proyek
+## Project Structure
 
-- `system_interface.py` : Skrip utama untuk menjalankan aplikasi *webcam live tracking*.
-- `train_final.py` : Skrip pelatihan model XGBoost menggunakan dataset bersih dan Optuna.
-- `utils.py` : Modul bantuan yang berisi fungsi kustom (seperti `TemporalSmoother` dan `build_features`).
-- `eda_advanced.py` : Skrip untuk Exploratory Data Analysis (Heatmap, Scatter 2D, Feature Importance).
-- `preprocess_outliers.py` : Skrip pembersihan data otomatis menggunakan metode IQR (Interquartile Range) berbasis kelas.
-- `posture_xgboost_production.pkl` : File *pickle* berisi model terlatih dan *Label Encoder*. (Pastikan ini sesuai ukuran file di GitHub).
+- `system_interface.py`: Main script to run the live webcam tracking application.
+- `train_final.py`: Script for training the XGBoost model using the cleaned dataset and Optuna.
+- `utils.py`: Helper module containing custom functions (such as `TemporalSmoother` and `build_features`).
+- `eda_advanced.py`: Script for Exploratory Data Analysis (Heatmap, 2D Scatter, Feature Importance).
+- `preprocess_outliers.py`: Script for automated data cleaning using a class-based IQR (Interquartile Range) method.
+- `posture_xgboost_production.pkl`: Pickle file containing the trained model and Label Encoder. (Ensure this matches the file size on GitHub).
 
 ---
 
-## 🚀 Cara Instalasi dan Penggunaan
+## Installation and Usage
 
-1. **Clone repository ini**
+1. **Clone this repository**
    ```bash
    git clone [https://github.com/UsernameKamu/posture-pal-ai.git](https://github.com/UsernameKamu/posture-pal-ai.git)
    cd posture-pal-ai
