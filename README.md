@@ -39,7 +39,7 @@ This project was built using **Google MediaPipe** for body landmark extraction (
 ## 📁 Project Structure
 
 ```text
-posture-pal-ai/
+posture-project/
 ├── system_interface.py             # Main script to run the live webcam tracker
 ├── train_final.py                  # XGBoost model training and Optuna tuning script
 ├── utils.py                        # Helper module (TemporalSmoother, build_features)
@@ -47,10 +47,3 @@ posture-pal-ai/
 ├── preprocess_outliers.py          # Automated data cleaning via class-based IQR method
 └── posture_xgboost_production.pkl  # Trained model and Label Encoder (Pickle file)
 ```
-
-## 🚀 Installation & Usage
-
-**1. Clone repository**
-   ```bash
-   git clone [https://github.com/UsernameKamu/posture-pal-ai.git](https://github.com/UsernameKamu/posture-pal-ai.git)
-   cd posture-pal-ai
