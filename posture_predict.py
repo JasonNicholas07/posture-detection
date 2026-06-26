@@ -60,24 +60,20 @@ def compute_angle(p1, p2, p3):
 
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    # Combines raw landmarks + engineered angle/distance features.
-    # MediaPipe upper-body landmark indices (1-based in the dataset):
-    #   1=nose, 2=left_eye_inner, 3=left_eye, 4=left_eye_outer,
-    #   5=right_eye_inner, 6=right_eye, 7=right_eye_outer,
-    #   8=left_ear, 9=right_ear, 10=mouth_left, 11=mouth_right,
-    #   12=left_shoulder, 13=right_shoulder
+    # Menggunakan DataFrame kosong agar semua koordinat X, Y, Z mentah
+    # otomatis terbuang (Feature Selection)
+    feat = pd.DataFrame(index=df.index)
 
-    feat = df[raw_features].copy()
-    def xy(i):
-        # Return (N,2) array for landmark i (1-based)
-        return df[[f'x{i}', f'y{i}']].values
-
-    def xyz(i):
-        return df[[f'x{i}', f'y{i}', f'z{i}']].values
-
-    # Shoulder midpoint vs nose (forward/back lean indicator) 
+    # ==================================================
+    # 1. REFERENSI TITIK TENGAH (Pusat Tubuh)
+    # ==================================================
     shoulder_mid_x = (df['x12'] + df['x13']) / 2
     shoulder_mid_y = (df['y12'] + df['y13']) / 2
+
+    # ==================================================
+    # 2. FITUR JARAK DAN POSISI (Sumbu X & Y)
+    # ==================================================
+    # Shoulder midpoint vs nose (forward/back lean indicator) 
     feat['nose_to_shoulder_mid_x'] = df['x1'] - shoulder_mid_x
     feat['nose_to_shoulder_mid_y'] = df['y1'] - shoulder_mid_y
     feat['nose_to_shoulder_mid_dist'] = np.sqrt(
@@ -101,16 +97,35 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     feat['nose_right_ear_x_diff'] = df['x1'] - df['x9']
 
     # Eye level asymmetry (head tilt left/right) 
-    feat['eye_level_diff'] = df['y3'] - df['y6']   # left_eye vs right_eye
+    feat['eye_level_diff'] = df['y3'] - df['y6']
 
-    # Nose depth (z-axis forward lean) 
-    feat['nose_z'] = df['z1']
-    feat['nose_z_vs_shoulder_z'] = df['z1'] - (df['z12'] + df['z13']) / 2
+    # ==================================================
+    # 3. FITUR KEDALAMAN (Sumbu Z) & SUDUT RELATIF
+    # ==================================================
+    # Menggantikan nose_z mentah dengan jarak relatif Hidung terhadap Bahu
+    feat['relative_nose_z'] = df['z1'] - ((df['z12'] + df['z13']) / 2)
+    
+    # Normalisasi agar model kebal terhadap jarak kamera
+    feat['normalized_nose_z'] = feat['relative_nose_z'] / (feat['shoulder_width'] + 0.0001)
+    
+    # Menghitung sudut derajat leher (sangat kuat untuk mendeteksi Forward Head Posture)
+    feat['neck_forward_angle'] = np.degrees(
+        np.arctan2(
+            np.abs(feat['relative_nose_z']), 
+            np.abs(feat['nose_to_shoulder_mid_y']) + 0.0001
+        )
+    )
 
-    # Confidence (visibility) stats 
+    # ==================================================
+    # 4. STATISTIK VISIBILITAS (Mencegah Halusinasi Kamera)
+    # ==================================================
+    LANDMARK_COUNT = 13
     v_cols = [f'v{i}' for i in range(1, LANDMARK_COUNT + 1)]
-    feat['mean_visibility'] = df[v_cols].mean(axis=1)
-    feat['min_visibility']  = df[v_cols].min(axis=1)
+    
+    # Validasi apakah kolom 'v' ada (karena kamera live kadang mengabaikannya)
+    if all(col in df.columns for col in v_cols):
+        feat['mean_visibility'] = df[v_cols].mean(axis=1)
+        feat['min_visibility']  = df[v_cols].min(axis=1)
 
     return feat
 
