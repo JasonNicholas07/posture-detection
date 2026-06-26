@@ -27,7 +27,7 @@ options = vision.PoseLandmarkerOptions(
 detector = vision.PoseLandmarker.create_from_options(options)
 
 # --- 2. PERSIAPAN FILE DATASET CSV ---
-csv_file = 'dataset_postur_normal.csv'
+csv_file = 'dataset_postur_people.csv'
 
 if not os.path.exists(csv_file):
     with open(csv_file, mode='w', newline='') as f:
@@ -134,4 +134,4 @@ while cap.isOpened():
 
 cap.release()
 cv2.destroyAllWindows()
-print("\nPengumpulan selesai. Cek file dataset_postur.csv")
+print("\nPengumpulan selesai. Cek file dataset_postur_people.csv")
