@@ -21,13 +21,13 @@ print("Posture Classification Training v3")
 
 
 # 1. define
-DATASET_PATH        = 'dataset_postur_v3.csv'
-MODEL_OUTPUT_PATH   = 'posture_xgboost_v3.pkl'
+DATASET_PATH        = 'dataset_postur.csv'
+MODEL_OUTPUT_PATH   = 'posture_xgboost.pkl'
 N_OPTUNA_TRIALS     = 60
 N_CV_FOLDS          = 5
 TEST_SIZE           = 0.2
 RANDOM_STATE        = 42
-NORMAL_THRESHOLD = 0.60
+NORMAL_THRESHOLD = 0.55
 BACK_THRESHOLD = 0.95
 
 
