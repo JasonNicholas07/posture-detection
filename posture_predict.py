@@ -1,9 +1,5 @@
 
 # Posture Classification - XGBoost
-# Improvements:
-#   - Angle/distance features from MediaPipe landmarks
-#   - Threshold-based prediction (Normal class confidence gate)
-#   - Temporal smoother class for real-time inference
 
 import pandas as pd
 import numpy as np
@@ -17,12 +13,12 @@ import joblib
 import warnings
 warnings.filterwarnings('ignore')
 
-print("Posture Classification Training v3")
+print("Posture Classification Training")
 
 
 # 1. define
-DATASET_PATH        = 'dataset_postur.csv'
-MODEL_OUTPUT_PATH   = 'posture_xgboost.pkl'
+DATASET_PATH        = 'dataset_postur_more.csv'
+MODEL_OUTPUT_PATH   = 'posture_xgboost_more.pkl'
 N_OPTUNA_TRIALS     = 60
 N_CV_FOLDS          = 5
 TEST_SIZE           = 0.2

@@ -31,15 +31,12 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     # otomatis terbuang (Feature Selection)
     feat = pd.DataFrame(index=df.index)
 
-    # ==================================================
+    
     # 1. REFERENSI TITIK TENGAH (Pusat Tubuh)
-    # ==================================================
     shoulder_mid_x = (df['x12'] + df['x13']) / 2
     shoulder_mid_y = (df['y12'] + df['y13']) / 2
 
-    # ==================================================
     # 2. FITUR JARAK DAN POSISI (Sumbu X & Y)
-    # ==================================================
     # Shoulder midpoint vs nose (forward/back lean indicator) 
     feat['nose_to_shoulder_mid_x'] = df['x1'] - shoulder_mid_x
     feat['nose_to_shoulder_mid_y'] = df['y1'] - shoulder_mid_y
@@ -66,9 +63,7 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     # Eye level asymmetry (head tilt left/right) 
     feat['eye_level_diff'] = df['y3'] - df['y6']
 
-    # ==================================================
     # 3. FITUR KEDALAMAN (Sumbu Z) & SUDUT RELATIF
-    # ==================================================
     # Menggantikan nose_z mentah dengan jarak relatif Hidung terhadap Bahu
     feat['relative_nose_z'] = df['z1'] - ((df['z12'] + df['z13']) / 2)
     
@@ -83,9 +78,7 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
         )
     )
 
-    # ==================================================
     # 4. STATISTIK VISIBILITAS (Mencegah Halusinasi Kamera)
-    # ==================================================
     LANDMARK_COUNT = 13
     v_cols = [f'v{i}' for i in range(1, LANDMARK_COUNT + 1)]
     
@@ -116,7 +109,7 @@ detector = vision.PoseLandmarker.create_from_options(options)
 
 # 2. LOAD XGBOOST v2
 print("Memuat model XGBoost v3...")
-model_data      = joblib.load('posture_xgboost.pkl')
+model_data      = joblib.load('posture_xgboost_more.pkl')
 model           = model_data['model']
 le              = model_data['encoder']
 raw_features    = model_data['raw_features']
