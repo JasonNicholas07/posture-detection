@@ -17,12 +17,12 @@ print("Posture Classification Training")
 
 
 # 1. define
-DATASET_PATH        = 'dataset_postur_more.csv'
-MODEL_OUTPUT_PATH   = 'posture_xgboost_more.pkl'
+DATASET_PATH        = 'dataset_postur_v2_clean.csv'
+MODEL_OUTPUT_PATH   = 'posture_xgboost_v2.pkl'
 N_OPTUNA_TRIALS     = 60
 N_CV_FOLDS          = 5
 TEST_SIZE           = 0.2
-RANDOM_STATE        = 42
+RANDOM_STATE        = 67
 NORMAL_THRESHOLD = 0.55
 BACK_THRESHOLD = 0.95
 
@@ -60,15 +60,15 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     # otomatis terbuang (Feature Selection)
     feat = pd.DataFrame(index=df.index)
 
-    # ==================================================
+    
     # 1. REFERENSI TITIK TENGAH (Pusat Tubuh)
-    # ==================================================
+    
     shoulder_mid_x = (df['x12'] + df['x13']) / 2
     shoulder_mid_y = (df['y12'] + df['y13']) / 2
 
-    # ==================================================
+    
     # 2. FITUR JARAK DAN POSISI (Sumbu X & Y)
-    # ==================================================
+    
     # Shoulder midpoint vs nose (forward/back lean indicator) 
     feat['nose_to_shoulder_mid_x'] = df['x1'] - shoulder_mid_x
     feat['nose_to_shoulder_mid_y'] = df['y1'] - shoulder_mid_y
@@ -95,9 +95,9 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     # Eye level asymmetry (head tilt left/right) 
     feat['eye_level_diff'] = df['y3'] - df['y6']
 
-    # ==================================================
+    
     # 3. FITUR KEDALAMAN (Sumbu Z) & SUDUT RELATIF
-    # ==================================================
+    
     # Menggantikan nose_z mentah dengan jarak relatif Hidung terhadap Bahu
     feat['relative_nose_z'] = df['z1'] - ((df['z12'] + df['z13']) / 2)
     
@@ -112,9 +112,8 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
         )
     )
 
-    # ==================================================
+    
     # 4. STATISTIK VISIBILITAS (Mencegah Halusinasi Kamera)
-    # ==================================================
     LANDMARK_COUNT = 13
     v_cols = [f'v{i}' for i in range(1, LANDMARK_COUNT + 1)]
     

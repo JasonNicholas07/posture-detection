@@ -107,9 +107,9 @@ options = vision.PoseLandmarkerOptions(
 detector = vision.PoseLandmarker.create_from_options(options)
 
 
-# 2. LOAD XGBOOST v2
-print("Memuat model XGBoost v3...")
-model_data      = joblib.load('posture_xgboost_more.pkl')
+# 2. LOAD XGBOOST
+print("Memuat model XGBoost...")
+model_data      = joblib.load('posture_xgboost_v1.pkl')
 model           = model_data['model']
 le              = model_data['encoder']
 raw_features    = model_data['raw_features']
