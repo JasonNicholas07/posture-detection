@@ -1,4 +1,3 @@
-
 # Posture Classification - XGBoost
 
 import pandas as pd
@@ -15,10 +14,9 @@ warnings.filterwarnings('ignore')
 
 print("Posture Classification Training")
 
-
 # 1. define
-DATASET_PATH        = 'dataset_postur_v2_clean.csv'
-MODEL_OUTPUT_PATH   = 'posture_xgboost_v2.pkl'
+DATASET_PATH        = 'dataset_postur_more.csv'
+MODEL_OUTPUT_PATH   = 'posture_xgboost_v1.3.pkl'
 N_OPTUNA_TRIALS     = 60
 N_CV_FOLDS          = 5
 TEST_SIZE           = 0.2
@@ -61,14 +59,17 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     feat = pd.DataFrame(index=df.index)
 
     
+    feat['y2'] = df['y2']
+    feat['y5'] = df['y5']
+    feat['z11'] = df['z11']
+    feat['z12'] = df['z12']
+
     # 1. REFERENSI TITIK TENGAH (Pusat Tubuh)
-    
     shoulder_mid_x = (df['x12'] + df['x13']) / 2
     shoulder_mid_y = (df['y12'] + df['y13']) / 2
 
     
     # 2. FITUR JARAK DAN POSISI (Sumbu X & Y)
-    
     # Shoulder midpoint vs nose (forward/back lean indicator) 
     feat['nose_to_shoulder_mid_x'] = df['x1'] - shoulder_mid_x
     feat['nose_to_shoulder_mid_y'] = df['y1'] - shoulder_mid_y
@@ -111,7 +112,6 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
             np.abs(feat['nose_to_shoulder_mid_y']) + 0.0001
         )
     )
-
     
     # 4. STATISTIK VISIBILITAS (Mencegah Halusinasi Kamera)
     LANDMARK_COUNT = 13
@@ -122,15 +122,47 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
         feat['mean_visibility'] = df[v_cols].mean(axis=1)
         feat['min_visibility']  = df[v_cols].min(axis=1)
 
+    # 5. CUSTOM RATIO & DIFFERENCE FEATURES
+    feat['y2_y5_ratio']   = df['y2'] / (df['y5'] + 1e-6)
+    feat['z11_z12_diff']  = df['z11'] - df['z12']
+    feat['z11_z12_ratio'] = df['z11'] / (df['z12'] + 1e-6)
+
+    # 6. TEMPORAL FEATURES
+    # Rate of change (using fillna(0) to handle the first row's NaN)
+    feat['y2_diff']  = df['y2'].diff().fillna(0)
+    feat['y5_diff']  = df['y5'].diff().fillna(0)
+    feat['z11_diff'] = df['z11'].diff().fillna(0)
+    feat['z12_diff'] = df['z12'].diff().fillna(0)
+
+    # Moving averages over a window of 3 frames 
+    # (using bfill() to back-fill the NaNs in the first 2 rows)
+    feat['y2_moving_avg']  = df['y2'].rolling(window=3).mean().bfill()
+    feat['y5_moving_avg']  = df['y5'].rolling(window=3).mean().bfill()
+    feat['z11_moving_avg'] = df['z11'].rolling(window=3).mean().bfill()
+    feat['z12_moving_avg'] = df['z12'].rolling(window=3).mean().bfill()
+
+    # Normalize features by a reference measurement
+    feat['y2_normalized']  = df['y2'] / (df['y5'] + 1e-6)
+    feat['z11_normalized'] = df['z11'] / (df['z12'] + 1e-6)
+
     return feat
 
 
 print("\nEngineering features...")
 X_full = build_features(df)
-print(f"Raw features:        {len(raw_features)}")
-print(f"Engineered features: {X_full.shape[1] - len(raw_features)}")
-print(f"Total features:      {X_full.shape[1]}")
 
+# Define the specific feature set
+features = [
+    'y2', 'y5', 'z11', 'z12', 
+    'y2_y5_ratio', 'z11_z12_diff', 'z11_z12_ratio',            
+    'y2_diff', 'y5_diff', 'z11_diff', 'z12_diff', 
+    'y2_moving_avg', 'y5_moving_avg', 'z11_moving_avg', 'z12_moving_avg', 
+    'y2_normalized', 'z11_normalized'
+]
+
+X_full = X_full[features]
+
+print(f"Total features used: {X_full.shape[1]}")
 feature_names = list(X_full.columns)
 
 
@@ -216,19 +248,41 @@ print("=" * 50)
 
 
 # 7. Training(full train set)
-print("\nFinal training on full train set...")
-best = study.best_params.copy()
-normal_multiplier_best = best.pop('normal_multiplier')
+import matplotlib.pyplot as plt
 
-best['random_state']      = RANDOM_STATE
-best['eval_metric']       = 'mlogloss'
-best['use_label_encoder'] = False
+print("\nMelatih ulang model final dengan parameter terbaik...")
+best_params = study.best_params
+best_params['random_state'] = RANDOM_STATE
+best_params['eval_metric'] = 'mlogloss'
 
-sw_train_final = make_sample_weights(y_train, normal_idx, normal_multiplier_best)
+final_model = XGBClassifier(**best_params)
 
-final_model = XGBClassifier(**best)
-final_model.fit(X_train, y_train, sample_weight=sw_train_final)
-print(f"  Best normal_multiplier: {normal_multiplier_best:.3f}")
+eval_set = [(X_train, y_train), (X_test, y_test)]
+
+final_model.fit(
+    X_train, y_train,
+    eval_set=eval_set,
+    verbose=False
+)
+
+# --- PLOT LEARNING CURVE ---
+results = final_model.evals_result()
+epochs = len(results['validation_0']['mlogloss'])
+x_axis = range(0, epochs)
+
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.plot(x_axis, results['validation_0']['mlogloss'], label='Train Loss')
+ax.plot(x_axis, results['validation_1']['mlogloss'], label='Test Loss')
+ax.legend()
+plt.ylabel('Log Loss (Semakin rendah semakin baik)')
+plt.xlabel('Jumlah Pohon / Epochs')
+plt.title('XGBoost Learning Curve (Mendeteksi Overfitting)')
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.tight_layout()
+plt.show()
+
+# Evaluasi Final
+y_pred = final_model.predict(X_test)
 
 
 # 8. THRESHOLD-BASED PREDICTION FUNCTION

@@ -9,6 +9,7 @@ import numpy as np
 import joblib
 import urllib.request
 import os
+from collections import deque
 
 
 class TemporalSmoother:
@@ -109,17 +110,18 @@ detector = vision.PoseLandmarker.create_from_options(options)
 
 # 2. LOAD XGBOOST
 print("Memuat model XGBoost...")
-model_data      = joblib.load('posture_xgboost_v1.pkl')
+model_data      = joblib.load('posture_xgboost_v1.3.pkl')
 model           = model_data['model']
 le              = model_data['encoder']
 raw_features    = model_data['raw_features']
 normal_idx      = model_data['normal_idx']
 threshold       = model_data['normal_threshold']
 build_features  = model_data['build_features_fn']
+frame_buffer = deque(maxlen=3)
 TemporalSmoother = model_data['TemporalSmoother']
 
 n_classes   = len(le.classes_)
-smoother    = TemporalSmoother(window=10)
+smoother    = TemporalSmoother(window=15)           # window
 print(f"Classes: {list(le.classes_)}  |  Normal threshold: {threshold}")
 
 
@@ -137,6 +139,7 @@ def predict_with_threshold(proba_1d: np.ndarray) -> int:
 # 4. UI HELPERS
 LANDMARK_COUNT = 13
 # Skeleton connections (0-based MediaPipe indices, upper body only)
+
 UPPER_CONNECTIONS = [
     (0, 1), (0, 4),                 # nose → eyes
     (1, 2), (2, 3),                 # left eye chain
@@ -262,34 +265,54 @@ while cap.isOpened():
 
     if result.pose_landmarks:
         pose_landmarks = result.pose_landmarks[0]
-
-        # Draw skeleton
-        draw_skeleton(annotated, pose_landmarks)
-
-        # Build raw landmark row (same column order as training)
+        
+        # 1. Ambil data landmark mentah
         row = []
         for i in range(LANDMARK_COUNT):
             lm = pose_landmarks[i]
             row.extend([lm.x, lm.y, lm.z, lm.visibility])
+        
+        # 2. Masukkan ke buffer
+        frame_buffer.append(row)
 
-        landmark_df = pd.DataFrame([row], columns=raw_features)
+        # 3. Kita hanya bisa memprediksi jika sudah ada minimal 3 frame di buffer
+        if len(frame_buffer) == 3:
+            # Buat DataFrame dari 3 frame terakhir
+            landmark_df = pd.DataFrame(list(frame_buffer), columns=raw_features)
 
-        # Apply the same feature engineering used in training
-        X_live = build_features(landmark_df)
+            # Apply engineering (menggunakan fungsi yang di-load dari model)
+            X_live = build_features(landmark_df)
 
-        # Predict with threshold
-        proba       = model.predict_proba(X_live)[0]
-        raw_pred    = predict_with_threshold(proba)
-        smooth_pred = smoother.update(raw_pred)
+            # Ambil HANYA baris terakhir (frame saat ini) untuk prediksi
+            X_live_latest = X_live.tail(1)
 
-        raw_class     = le.inverse_transform([raw_pred])[0]
-        smooth_class  = le.inverse_transform([smooth_pred])[0]
+            # Pastikan urutan fitur sama persis dengan saat training
+            X_live_latest = X_live_latest[features_list]
 
-        draw_status_panel(annotated, smooth_class, proba, raw_class, smooth_class)
+            # Predict
+            proba = model.predict_proba(X_live_latest)[0]
+            raw_pred = predict_with_threshold(proba)
+            smooth_pred = smoother.update(raw_pred)
+
+            raw_class = le.inverse_transform([raw_pred])[0]
+            smooth_class = le.inverse_transform([smooth_pred])[0]
+
+            # Visualisasi
+            draw_skeleton(annotated, pose_landmarks)
+            draw_status_panel(annotated, smooth_class, proba, raw_class, smooth_class)
+        else:
+            # Status saat buffer belum penuh (frame 1 & 2)
+            cv2.putText(annotated, "Warming up...", (50, 50), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            draw_skeleton(annotated, pose_landmarks)
 
     else:
+        # Jika pose hilang, reset buffer dan smoother
         smoother.reset()
+        frame_buffer.clear() 
         draw_no_pose(annotated)
+
+    cv2.imshow('PosturePal v2', annotated)
 
     cv2.imshow('PosturePal v2', annotated)
 
