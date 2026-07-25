@@ -1,4 +1,5 @@
-# PosturePal
+# System interface
+# with window = 10
 
 import cv2
 import mediapipe as mp
@@ -27,75 +28,101 @@ class TemporalSmoother:
     def reset(self):
         self.history = []
 
+
+# FEATURE ENGINEERING 
+LANDMARK_COUNT = 13
+
+raw_features = []
+for i in range(1, LANDMARK_COUNT + 1):
+    raw_features.extend([f'x{i}', f'y{i}', f'z{i}', f'v{i}'])
+
+SELECTED_FEATURES = [
+    'y2', 'y5', 'z11', 'z12',
+    'y2_y5_ratio', 'z11_z12_diff', 'z11_z12_ratio',
+    'y2_diff', 'y5_diff', 'z11_diff', 'z12_diff',
+    'y2_moving_avg', 'y5_moving_avg', 'z11_moving_avg', 'z12_moving_avg',
+    'y2_normalized', 'z11_normalized',
+]
+
+
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    # Menggunakan DataFrame kosong agar semua koordinat X, Y, Z mentah
-    # otomatis terbuang (Feature Selection)
     feat = pd.DataFrame(index=df.index)
 
-    
-    # 1. REFERENSI TITIK TENGAH (Pusat Tubuh)
+    # Raw columns kept intentionally
+    feat['y2']  = df['y2']
+    feat['y5']  = df['y5']
+    feat['z11'] = df['z11']
+    feat['z12'] = df['z12']
+
+    # Shoulder midpoint reference
     shoulder_mid_x = (df['x12'] + df['x13']) / 2
     shoulder_mid_y = (df['y12'] + df['y13']) / 2
 
-    # 2. FITUR JARAK DAN POSISI (Sumbu X & Y)
-    # Shoulder midpoint vs nose (forward/back lean indicator) 
+    # Distance / position features
     feat['nose_to_shoulder_mid_x'] = df['x1'] - shoulder_mid_x
     feat['nose_to_shoulder_mid_y'] = df['y1'] - shoulder_mid_y
     feat['nose_to_shoulder_mid_dist'] = np.sqrt(
-        feat['nose_to_shoulder_mid_x']**2 + feat['nose_to_shoulder_mid_y']**2
+        feat['nose_to_shoulder_mid_x'] ** 2 + feat['nose_to_shoulder_mid_y'] ** 2
     )
 
-    # Shoulder width (lateral lean / slouch) 
     feat['shoulder_width'] = np.sqrt(
-        (df['x12'] - df['x13'])**2 + (df['y12'] - df['y13'])**2
+        (df['x12'] - df['x13']) ** 2 + (df['y12'] - df['y13']) ** 2
     )
 
-    # Ear–shoulder alignment (head tilt/forward head) 
     feat['left_ear_shoulder_y_diff']  = df['y8']  - df['y12']
     feat['right_ear_shoulder_y_diff'] = df['y9']  - df['y13']
     feat['ear_shoulder_y_asymmetry']  = (
         feat['left_ear_shoulder_y_diff'] - feat['right_ear_shoulder_y_diff']
     )
 
-    # Nose–ear horizontal offset (head forward lean) 
     feat['nose_left_ear_x_diff']  = df['x1'] - df['x8']
     feat['nose_right_ear_x_diff'] = df['x1'] - df['x9']
+    feat['eye_level_diff']        = df['y3'] - df['y6']
 
-    # Eye level asymmetry (head tilt left/right) 
-    feat['eye_level_diff'] = df['y3'] - df['y6']
-
-    # 3. FITUR KEDALAMAN (Sumbu Z) & SUDUT RELATIF
-    # Menggantikan nose_z mentah dengan jarak relatif Hidung terhadap Bahu
-    feat['relative_nose_z'] = df['z1'] - ((df['z12'] + df['z13']) / 2)
-    
-    # Normalisasi agar model kebal terhadap jarak kamera
+    # Depth features (camera-invariant)
+    feat['relative_nose_z']   = df['z1'] - ((df['z12'] + df['z13']) / 2)
     feat['normalized_nose_z'] = feat['relative_nose_z'] / (feat['shoulder_width'] + 0.0001)
-    
-    # Menghitung sudut derajat leher (sangat kuat untuk mendeteksi Forward Head Posture)
     feat['neck_forward_angle'] = np.degrees(
         np.arctan2(
-            np.abs(feat['relative_nose_z']), 
+            np.abs(feat['relative_nose_z']),
             np.abs(feat['nose_to_shoulder_mid_y']) + 0.0001
         )
     )
 
-    # 4. STATISTIK VISIBILITAS (Mencegah Halusinasi Kamera)
-    LANDMARK_COUNT = 13
+    # Visibility stats
     v_cols = [f'v{i}' for i in range(1, LANDMARK_COUNT + 1)]
-    
-    # Validasi apakah kolom 'v' ada (karena kamera live kadang mengabaikannya)
     if all(col in df.columns for col in v_cols):
         feat['mean_visibility'] = df[v_cols].mean(axis=1)
         feat['min_visibility']  = df[v_cols].min(axis=1)
 
-    return feat
+    # Ratio / difference features
+    feat['y2_y5_ratio']   = df['y2'] / (df['y5'] + 1e-6)
+    feat['z11_z12_diff']  = df['z11'] - df['z12']
+    feat['z11_z12_ratio'] = df['z11'] / (df['z12'] + 1e-6)
 
-# 1. MEDIAPIPE MODEL
+    # Temporal features -- require multiple rows in df
+    feat['y2_diff']  = df['y2'].diff().fillna(0)
+    feat['y5_diff']  = df['y5'].diff().fillna(0)
+    feat['z11_diff'] = df['z11'].diff().fillna(0)
+    feat['z12_diff'] = df['z12'].diff().fillna(0)
+
+    feat['y2_moving_avg']  = df['y2'].rolling(window=3).mean().bfill()
+    feat['y5_moving_avg']  = df['y5'].rolling(window=3).mean().bfill()
+    feat['z11_moving_avg'] = df['z11'].rolling(window=3).mean().bfill()
+    feat['z12_moving_avg'] = df['z12'].rolling(window=3).mean().bfill()
+
+    feat['y2_normalized']  = df['y2'] / (df['y5'] + 1e-6)
+    feat['z11_normalized'] = df['z11'] / (df['z12'] + 1e-6)
+
+    return feat[SELECTED_FEATURES]
+
+
+# 1. MEDIAPIPE
 model_path = 'pose_landmarker_lite.task'
 if not os.path.exists(model_path):
-    print("Mengambil model MediaPipe dari Google APIs...")
+    print("Mengambil model MediaPipe dari Google...")
     url = ("https://storage.googleapis.com/mediapipe-models/"
-"pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task")
+           "pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task")
     urllib.request.urlretrieve(url, model_path)
     print("Model berhasil diunduh!\n")
 
@@ -108,53 +135,59 @@ options = vision.PoseLandmarkerOptions(
 detector = vision.PoseLandmarker.create_from_options(options)
 
 
-# 2. LOAD XGBOOST
-print("Memuat model XGBoost...")
-model_data      = joblib.load('posture_xgboost_v1.3.pkl')
-model           = model_data['model']
-le              = model_data['encoder']
-raw_features    = model_data['raw_features']
-normal_idx      = model_data['normal_idx']
-threshold       = model_data['normal_threshold']
-build_features  = model_data['build_features_fn']
-frame_buffer = deque(maxlen=3)
-TemporalSmoother = model_data['TemporalSmoother']
 
-n_classes   = len(le.classes_)
-smoother    = TemporalSmoother(window=15)           # window
+print("Memuat model XGBoost...")
+model_data     = joblib.load('posture_xgboost_v1.3.pkl')
+model          = model_data['model']
+le             = model_data['encoder']
+normal_idx     = model_data['normal_idx']
+threshold      = model_data['normal_threshold']
+back_idx       = int(le.transform(['Back'])[0]) if 'Back' in le.classes_ else None
+BACK_THRESHOLD = 0.95
+
+n_classes  = len(le.classes_)
+smoother   = TemporalSmoother(window=10)
+frame_buffer = deque(maxlen=3)
+
+# Verify feature alignment at startup
+model_features = list(model.feature_names_in_)
+if model_features != SELECTED_FEATURES:
+    print("WARNING: SELECTED_FEATURES in inference does not match model.feature_names_in_")
+    print(f"  Model expects : {model_features}")
+    print(f"  Script defines: {SELECTED_FEATURES}")
+
 print(f"Classes: {list(le.classes_)}  |  Normal threshold: {threshold}")
 
 
-# 3. THRESHOLD PREDICTION 
+# 3. THRESHOLD PREDICTION
 def predict_with_threshold(proba_1d: np.ndarray) -> int:
-    """Single-row proba array → class index."""
+    if back_idx is not None and proba_1d[back_idx] >= BACK_THRESHOLD:
+        return back_idx
     if proba_1d[normal_idx] >= threshold:
         return normal_idx
     mask = np.ones(n_classes, dtype=bool)
     mask[normal_idx] = False
+    if back_idx is not None:
+        mask[back_idx] = False
     return int(np.argmax(proba_1d * mask))
 
 
-
 # 4. UI HELPERS
-LANDMARK_COUNT = 13
-# Skeleton connections (0-based MediaPipe indices, upper body only)
-
 UPPER_CONNECTIONS = [
-    (0, 1), (0, 4),                 # nose → eyes
-    (1, 2), (2, 3),                 # left eye chain
-    (4, 5), (5, 6),                 # right eye chain
-    (7, 8),                         # ears
-    (9, 10),                        # mouth
-    (11, 12),                       # shoulders
+    (0, 1), (0, 4),
+    (1, 2), (2, 3),
+    (4, 5), (5, 6),
+    (7, 8),
+    (9, 10),
+    (11, 12),
 ]
 
 CLASS_COLORS = {
-    'Normal':  (34,  197,  94),     # green
-    'Forward': (239, 68,   68),     # red
-    'Back':    (234, 179,  8),      # amber
+    'Normal':  (34,  197,  94),
+    'Forward': (239,  68,  68),
+    'Back':    (234, 179,   8),
 }
-DEFAULT_COLOR = (156, 163, 175)     # gray
+DEFAULT_COLOR = (156, 163, 175)
 
 
 def get_color(class_name: str):
@@ -164,74 +197,59 @@ def get_color(class_name: str):
 def draw_skeleton(image, landmarks):
     h, w, _ = image.shape
     pts = [(int(lm.x * w), int(lm.y * h)) for lm in landmarks[:LANDMARK_COUNT]]
-
     for (a, b) in UPPER_CONNECTIONS:
         if a < LANDMARK_COUNT and b < LANDMARK_COUNT:
             cv2.line(image, pts[a], pts[b], (200, 200, 200), 2, cv2.LINE_AA)
-
     for i, (cx, cy) in enumerate(pts):
-        vis = landmarks[i].visibility
+        vis   = landmarks[i].visibility
         alpha = max(0.3, min(1.0, vis))
         color = tuple(int(c * alpha) for c in (255, 230, 80))
         cv2.circle(image, (cx, cy), 6, color, -1, cv2.LINE_AA)
         cv2.circle(image, (cx, cy), 6, (80, 80, 80), 1, cv2.LINE_AA)
 
 
-def draw_status_panel(image, pred_class: str, proba: np.ndarray, raw_class: str, smoothed_class: str):
-    
-    # Top-left status panel:
-    #   • Rounded coloured header with current class
-    #   • Per-class probability bars
-    #   • Threshold & smoother info
-    
-    h, w = image.shape[:2]
-    panel_w, panel_h = 320, 175
-    margin = 16
+def draw_status_panel(image, pred_class: str, proba: np.ndarray,
+                      raw_class: str, smoothed_class: str):
+    margin   = 16
+    panel_w  = 320
+    panel_h  = 175
 
-    # Semi-transparent background
     overlay = image.copy()
     cv2.rectangle(overlay, (margin, margin),
-                (margin + panel_w, margin + panel_h), (15, 15, 15), -1)
+                  (margin + panel_w, margin + panel_h), (15, 15, 15), -1)
     cv2.addWeighted(overlay, 0.72, image, 0.28, 0, image)
 
     color = get_color(pred_class)
-
-    # Status header
     cv2.rectangle(image, (margin, margin),
-                (margin + panel_w, margin + 44), color, -1)
+                  (margin + panel_w, margin + 44), color, -1)
     cv2.putText(image, f"STATUS: {pred_class}",
                 (margin + 10, margin + 32),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.85, (255, 255, 255), 2, cv2.LINE_AA)
 
-    # Per-class probability bars
-    bar_x      = margin + 10
+    bar_x       = margin + 10
     bar_y_start = margin + 58
-    bar_max_w  = panel_w - 20
-    bar_h      = 16
+    bar_max_w   = panel_w - 20
+    bar_h       = 16
 
     for i, cls in enumerate(le.classes_):
         prob   = proba[i]
         bcolor = get_color(cls)
         y      = bar_y_start + i * 34
 
-        cv2.putText(image, f"{cls}", (bar_x, y + 12),
+        cv2.putText(image, cls, (bar_x, y + 12),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
 
-        # Background track
         cv2.rectangle(image, (bar_x + 75, y),
-                    (bar_x + 75 + bar_max_w - 75, y + bar_h),
-                    (60, 60, 60), -1)
-        # Filled bar
+                      (bar_x + 75 + bar_max_w - 75, y + bar_h), (60, 60, 60), -1)
+
         filled = int((bar_max_w - 75) * prob)
         cv2.rectangle(image, (bar_x + 75, y),
-                    (bar_x + 75 + filled, y + bar_h),
-                    bcolor, -1)
-        # Percentage label
+                      (bar_x + 75 + filled, y + bar_h), bcolor, -1)
+
         cv2.putText(image, f"{prob * 100:.1f}%",
                     (bar_x + 75 + (bar_max_w - 75) + 4, y + 12),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.42, (220, 220, 220), 1, cv2.LINE_AA)
 
-    # Footer: raw vs smoothed
     footer_y = margin + panel_h - 10
     cv2.putText(image,
                 f"raw: {raw_class}  smoothed: {smoothed_class}  thr: {threshold}",
@@ -254,68 +272,50 @@ print("Press q to exit.")
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
-        print("Failed reading frame...")
+        print("Failed reading frame.")
         break
 
-    rgb_frame  = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    mp_image   = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-    result     = detector.detect(mp_image)
-
-    annotated  = frame.copy()
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    mp_image  = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+    result    = detector.detect(mp_image)
+    annotated = frame.copy()
 
     if result.pose_landmarks:
         pose_landmarks = result.pose_landmarks[0]
-        
-        # 1. Ambil data landmark mentah
+
         row = []
         for i in range(LANDMARK_COUNT):
             lm = pose_landmarks[i]
             row.extend([lm.x, lm.y, lm.z, lm.visibility])
-        
-        # 2. Masukkan ke buffer
+
         frame_buffer.append(row)
 
-        # 3. Kita hanya bisa memprediksi jika sudah ada minimal 3 frame di buffer
         if len(frame_buffer) == 3:
-            # Buat DataFrame dari 3 frame terakhir
             landmark_df = pd.DataFrame(list(frame_buffer), columns=raw_features)
 
-            # Apply engineering (menggunakan fungsi yang di-load dari model)
-            X_live = build_features(landmark_df)
+            # build_features returns only SELECTED_FEATURES, last row = current frame
+            X_live = build_features(landmark_df).tail(1).reset_index(drop=True)
 
-            # Ambil HANYA baris terakhir (frame saat ini) untuk prediksi
-            X_live_latest = X_live.tail(1)
-
-            # Pastikan urutan fitur sama persis dengan saat training
-            X_live_latest = X_live_latest[features_list]
-
-            # Predict
-            proba = model.predict_proba(X_live_latest)[0]
-            raw_pred = predict_with_threshold(proba)
+            proba       = model.predict_proba(X_live)[0]
+            raw_pred    = predict_with_threshold(proba)
             smooth_pred = smoother.update(raw_pred)
 
-            raw_class = le.inverse_transform([raw_pred])[0]
+            raw_class    = le.inverse_transform([raw_pred])[0]
             smooth_class = le.inverse_transform([smooth_pred])[0]
 
-            # Visualisasi
             draw_skeleton(annotated, pose_landmarks)
             draw_status_panel(annotated, smooth_class, proba, raw_class, smooth_class)
         else:
-            # Status saat buffer belum penuh (frame 1 & 2)
-            cv2.putText(annotated, "Warming up...", (50, 50), 
+            cv2.putText(annotated, "Warming up...", (50, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
             draw_skeleton(annotated, pose_landmarks)
 
     else:
-        # Jika pose hilang, reset buffer dan smoother
         smoother.reset()
-        frame_buffer.clear() 
+        frame_buffer.clear()
         draw_no_pose(annotated)
 
-    cv2.imshow('PosturePal v2', annotated)
-
-    cv2.imshow('PosturePal v2', annotated)
-
+    cv2.imshow('Postura', annotated)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 

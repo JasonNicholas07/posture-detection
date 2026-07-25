@@ -1,5 +1,8 @@
 # Posture Classification - XGBoost
+# extract upper body points,
+# using bayesian optimization
 
+# library
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split, StratifiedKFold
@@ -14,37 +17,30 @@ warnings.filterwarnings('ignore')
 
 print("Posture Classification Training")
 
-# 1. define
+# 1. define (setting)
 DATASET_PATH        = 'dataset_postur_more.csv'
 MODEL_OUTPUT_PATH   = 'posture_xgboost_v1.3.pkl'
-N_OPTUNA_TRIALS     = 60
+N_OPTUNA_TRIALS     = 60    # number of bayesian trial -> find best setting
 N_CV_FOLDS          = 5
 TEST_SIZE           = 0.2
 RANDOM_STATE        = 67
-NORMAL_THRESHOLD = 0.55
+NORMAL_THRESHOLD = 0.55  # threshold for prediction
 BACK_THRESHOLD = 0.95
 
-
-# 2. LOAD
+# data loading
 print("\nLoading dataset...")
 df = pd.read_csv(DATASET_PATH)
 print(f"Rows: {len(df):}   |   Columns: {len(df.columns)}")
 print(f"Class distribution:\n{df['class'].value_counts().to_string()}")
 
-
-# 3. FEATURES
+# FEATURES
 LANDMARK_COUNT = 13   # upper body landmarks 1–13
-
-raw_features = []
+raw_features = [] 
 for i in range(1, LANDMARK_COUNT + 1):
     raw_features.extend([f'x{i}', f'y{i}', f'z{i}', f'v{i}'])
 
 
-def compute_angle(p1, p2, p3):
-    # Angle at p2 formed by p1–p2–p3.
-    # p1/p2/p3 are (x, y) or (x, y, z) arrays, shape (N, dims).
-    # Returns angle in degrees, shape (N,).
-    
+def compute_angle(p1, p2, p3):    
     v1 = p1 - p2
     v2 = p3 - p2
     cos_angle = np.einsum('ij,ij->i', v1, v2) / (
@@ -54,11 +50,8 @@ def compute_angle(p1, p2, p3):
 
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    # Menggunakan DataFrame kosong agar semua koordinat X, Y, Z mentah
-    # otomatis terbuang (Feature Selection)
     feat = pd.DataFrame(index=df.index)
 
-    
     feat['y2'] = df['y2']
     feat['y5'] = df['y5']
     feat['z11'] = df['z11']
@@ -68,8 +61,6 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     shoulder_mid_x = (df['x12'] + df['x13']) / 2
     shoulder_mid_y = (df['y12'] + df['y13']) / 2
 
-    
-    # 2. FITUR JARAK DAN POSISI (Sumbu X & Y)
     # Shoulder midpoint vs nose (forward/back lean indicator) 
     feat['nose_to_shoulder_mid_x'] = df['x1'] - shoulder_mid_x
     feat['nose_to_shoulder_mid_y'] = df['y1'] - shoulder_mid_y
@@ -96,57 +87,47 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     # Eye level asymmetry (head tilt left/right) 
     feat['eye_level_diff'] = df['y3'] - df['y6']
 
-    
-    # 3. FITUR KEDALAMAN (Sumbu Z) & SUDUT RELATIF
-    
-    # Menggantikan nose_z mentah dengan jarak relatif Hidung terhadap Bahu
+    # 3. depth feature (Sumbu Z) & SUDUT 
     feat['relative_nose_z'] = df['z1'] - ((df['z12'] + df['z13']) / 2)
     
-    # Normalisasi agar model kebal terhadap jarak kamera
+    # Normalisasi
     feat['normalized_nose_z'] = feat['relative_nose_z'] / (feat['shoulder_width'] + 0.0001)
     
-    # Menghitung sudut derajat leher (sangat kuat untuk mendeteksi Forward Head Posture)
+    # sudut derajat leher
     feat['neck_forward_angle'] = np.degrees(
         np.arctan2(
             np.abs(feat['relative_nose_z']), 
             np.abs(feat['nose_to_shoulder_mid_y']) + 0.0001
         )
     )
-    
-    # 4. STATISTIK VISIBILITAS (Mencegah Halusinasi Kamera)
     LANDMARK_COUNT = 13
     v_cols = [f'v{i}' for i in range(1, LANDMARK_COUNT + 1)]
     
-    # Validasi apakah kolom 'v' ada (karena kamera live kadang mengabaikannya)
     if all(col in df.columns for col in v_cols):
         feat['mean_visibility'] = df[v_cols].mean(axis=1)
         feat['min_visibility']  = df[v_cols].min(axis=1)
 
-    # 5. CUSTOM RATIO & DIFFERENCE FEATURES
+    # ratio
     feat['y2_y5_ratio']   = df['y2'] / (df['y5'] + 1e-6)
     feat['z11_z12_diff']  = df['z11'] - df['z12']
     feat['z11_z12_ratio'] = df['z11'] / (df['z12'] + 1e-6)
 
-    # 6. TEMPORAL FEATURES
-    # Rate of change (using fillna(0) to handle the first row's NaN)
+    # temporal features
     feat['y2_diff']  = df['y2'].diff().fillna(0)
     feat['y5_diff']  = df['y5'].diff().fillna(0)
     feat['z11_diff'] = df['z11'].diff().fillna(0)
     feat['z12_diff'] = df['z12'].diff().fillna(0)
 
     # Moving averages over a window of 3 frames 
-    # (using bfill() to back-fill the NaNs in the first 2 rows)
     feat['y2_moving_avg']  = df['y2'].rolling(window=3).mean().bfill()
     feat['y5_moving_avg']  = df['y5'].rolling(window=3).mean().bfill()
     feat['z11_moving_avg'] = df['z11'].rolling(window=3).mean().bfill()
     feat['z12_moving_avg'] = df['z12'].rolling(window=3).mean().bfill()
 
-    # Normalize features by a reference measurement
     feat['y2_normalized']  = df['y2'] / (df['y5'] + 1e-6)
     feat['z11_normalized'] = df['z11'] / (df['z12'] + 1e-6)
 
     return feat
-
 
 print("\nEngineering features...")
 X_full = build_features(df)
@@ -164,7 +145,6 @@ X_full = X_full[features]
 
 print(f"Total features used: {X_full.shape[1]}")
 feature_names = list(X_full.columns)
-
 
 # 4. LABEL ENCODING + SPLIT
 print("\nEncoding labels and splitting data...")
@@ -355,13 +335,6 @@ for _, row in fi_df.iterrows():
 
 # 11. TEMPORAL SMOOTHER 
 class TemporalSmoother:
-
-    # Smooths predictions over a rolling window using majority vote.
-    # Prevents flickering between classes on single noisy frames.
-    # Usage (real-time loop):
-    #     smoother = TemporalSmoother(window=10)
-    #     stable_class = smoother.update(raw_prediction)
-
     def __init__(self, window: int = 10):
         self.window  = window
         self.history = []
@@ -375,7 +348,6 @@ class TemporalSmoother:
 
     def reset(self):
         self.history = []
-
 
 # 12. SAVE
 export_data = {
