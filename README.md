@@ -28,7 +28,7 @@ This project was built using **Google MediaPipe** for body landmark extraction (
 
 | Category | Technology |
 |---|---|
-| **Language** | Python 3.x |
+| **Language** | Python 3.11.15 |
 | **Computer Vision** | OpenCV, MediaPipe (Google APIs) |
 | **Machine Learning** | XGBoost, Scikit-Learn |
 | **Hyperparameter Tuning** | Optuna (Bayesian Optimization) |
