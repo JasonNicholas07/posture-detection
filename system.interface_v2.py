@@ -32,7 +32,7 @@ except ImportError:
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-BAD_POSTURE_ALERT_SECONDS = 10   # alert fires after this many continuous seconds of bad posture
+BAD_POSTURE_ALERT_SECONDS = 20   # alert fires after this many continuous seconds of bad posture
 ALERT_COOLDOWN_SECONDS    = 60   # minimum gap between repeated alerts
 FEEDBACK_LOG_PATH         = 'posture_feedback.csv'
 
@@ -120,11 +120,6 @@ class PostureNotifier:
 # FEEDBACK LOGGER
 # ─────────────────────────────────────────────
 class FeedbackLogger:
-    """
-    When the user says "I'm actually fine right now", log the correction.
-    CSV columns: timestamp, model_said, user_said, features...
-    This file can be used to add corrected samples to the training set.
-    """
     def __init__(self, path: str):
         self.path    = path
         self._header_written = os.path.exists(path) and os.path.getsize(path) > 0
@@ -250,7 +245,7 @@ detector = vision.PoseLandmarker.create_from_options(options)
 # ─────────────────────────────────────────────
 # 2. LOAD PKL
 # ─────────────────────────────────────────────
-print("Memuat model XGBoost...")
+print("XGBoost loading...")
 model_data   = joblib.load('posture_xgboost_v1.3.pkl')
 model        = model_data['model']
 le           = model_data['encoder']
