@@ -5,7 +5,6 @@
 ![MediaPipe](https://img.shields.io/badge/MediaPipe-00A67E.svg?style=flat-square&logo=google&logoColor=white)
 ![XGBoost](https://img.shields.io/badge/XGBoost-F37626.svg?style=flat-square)
 ![Optuna](https://img.shields.io/badge/Optuna-2565C1.svg?style=flat-square)
-
 An intelligent posture tracking application powered by **Computer Vision** and **Machine Learning**. 
 
 > The app analyzes webcam footage in real-time to detect your posture while sitting at a computer, classifying it as upright (**Normal**), leaning forward (**Forward**), or leaning back (**Back**).
