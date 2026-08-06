@@ -13,7 +13,7 @@ This project was built using **Google MediaPipe** for body landmark extraction (
 
 ---
 
-## 🌟 Key Features
+## 🌟 Key Features 
 
 *   **👁️ Real-Time Inference:** Processes webcam feeds without lag using the highly efficient MediaPipe Tasks API architecture.
 *   **🧠 Advanced Feature Engineering:** The model goes beyond raw coordinate data by utilizing specific anatomical feature extraction, such as *Nose-to-Shoulder Distance* (detects "turtle neck"), *Ear-Shoulder Asymmetry* (detects head tilting), and *Shoulder Width* (detects slouching).
