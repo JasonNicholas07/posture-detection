@@ -1,4 +1,4 @@
- #🧘‍♂️ Posture AI — Real-Time Posture Tracker
+# 🧘‍♂️ POSTURA AI — Real-Time Posture Tracker
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?style=flat-square&logo=python&logoColor=white)
 ![OpenCV](https://img.shields.io/badge/OpenCV-5C3EE8.svg?style=flat-square&logo=opencv&logoColor=white)
