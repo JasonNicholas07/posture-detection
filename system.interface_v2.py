@@ -1,10 +1,4 @@
 # Postura - Inference with Notification + Feedback
-#
-# Notification: triggers after bad posture holds for BAD_POSTURE_ALERT_SECONDS.
-#               Cooldown prevents re-alerting until posture recovers and worsens again.
-# Feedback:     Press F during live view to say "I'm actually sitting fine right now".
-#               Feedback is logged to posture_feedback.csv for future retraining.
-# Notification falls back to a console beep if plyer is unavailable.
 
 import cv2
 import mediapipe as mp
@@ -29,17 +23,13 @@ except ImportError:
     print("Falling back to console alert.\n")
 
 
-# ─────────────────────────────────────────────
 # CONFIG
-# ─────────────────────────────────────────────
 BAD_POSTURE_ALERT_SECONDS = 20   # alert fires after this many continuous seconds of bad posture
 ALERT_COOLDOWN_SECONDS    = 60   # minimum gap between repeated alerts
 FEEDBACK_LOG_PATH         = 'posture_feedback.csv'
 
 
-# ─────────────────────────────────────────────
 # TEMPORAL SMOOTHER
-# ─────────────────────────────────────────────
 class TemporalSmoother:
     def __init__(self, window: int = 10):
         self.window  = window
@@ -56,9 +46,7 @@ class TemporalSmoother:
         self.history = []
 
 
-# ─────────────────────────────────────────────
 # NOTIFICATION
-# ─────────────────────────────────────────────
 class PostureNotifier:
     def __init__(self, alert_after_seconds: float, cooldown_seconds: float):
         self.alert_after   = alert_after_seconds
@@ -68,10 +56,6 @@ class PostureNotifier:
         self._alerted_this_streak = False
 
     def update(self, is_bad: bool, current_class: str) -> bool:
-        """
-        Call every frame with whether the current smoothed prediction is bad.
-        Returns True the moment an alert should fire (once per streak).
-        """
         now = time.time()
 
         if not is_bad:
@@ -116,9 +100,7 @@ class PostureNotifier:
                 pass
 
 
-# ─────────────────────────────────────────────
 # FEEDBACK LOGGER
-# ─────────────────────────────────────────────
 class FeedbackLogger:
     def __init__(self, path: str):
         self.path    = path
@@ -142,9 +124,7 @@ class FeedbackLogger:
         print(f"[Feedback] Logged: model='{model_class}' -> user='{user_class}'")
 
 
-# ─────────────────────────────────────────────
-# FEATURE ENGINEERING  (exact copy of training build_features)
-# ─────────────────────────────────────────────
+# FEATURE ENGINEERING 
 LANDMARK_COUNT = 13
 
 raw_features = []
@@ -221,10 +201,7 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
 
     return feat[SELECTED_FEATURES]
 
-
-# ─────────────────────────────────────────────
 # 1. MEDIAPIPE
-# ─────────────────────────────────────────────
 model_path = 'pose_landmarker_lite.task'
 if not os.path.exists(model_path):
     print("Mengambil model MediaPipe dari Google APIs...")
@@ -242,9 +219,7 @@ options = vision.PoseLandmarkerOptions(
 detector = vision.PoseLandmarker.create_from_options(options)
 
 
-# ─────────────────────────────────────────────
 # 2. LOAD PKL
-# ─────────────────────────────────────────────
 print("XGBoost loading...")
 model_data   = joblib.load('posture_xgboost_v1.3.pkl')
 model        = model_data['model']
@@ -271,9 +246,7 @@ print(f"Alert after: {BAD_POSTURE_ALERT_SECONDS}s of bad posture")
 print("Controls: F = feedback (I'm actually fine)  |  Q = quit\n")
 
 
-# ─────────────────────────────────────────────
 # 3. THRESHOLD PREDICTION
-# ─────────────────────────────────────────────
 def predict_with_threshold(proba_1d: np.ndarray) -> int:
     if back_idx is not None and proba_1d[back_idx] >= BACK_THRESHOLD:
         return back_idx
@@ -286,9 +259,7 @@ def predict_with_threshold(proba_1d: np.ndarray) -> int:
     return int(np.argmax(proba_1d * mask))
 
 
-# ─────────────────────────────────────────────
 # 4. UI HELPERS
-# ─────────────────────────────────────────────
 UPPER_CONNECTIONS = [
     (0, 1), (0, 4), (1, 2), (2, 3),
     (4, 5), (5, 6), (7, 8), (9, 10), (11, 12),
@@ -401,9 +372,7 @@ def draw_no_pose(image):
                 cv2.FONT_HERSHEY_SIMPLEX, 0.9, (100, 100, 100), 2, cv2.LINE_AA)
 
 
-# ─────────────────────────────────────────────
 # 5. CAMERA LOOP
-# ─────────────────────────────────────────────
 cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 if not cap.isOpened():
     raise RuntimeError("Can't open camera")
