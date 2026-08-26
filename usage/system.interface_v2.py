@@ -32,9 +32,9 @@ except ImportError:
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-BAD_POSTURE_ALERT_SECONDS = 20   # alert fires after this many continuous seconds of bad posture
+BAD_POSTURE_ALERT_SECONDS = 10   # alert fires after this many continuous seconds of bad posture
 ALERT_COOLDOWN_SECONDS    = 60   # minimum gap between repeated alerts
-FEEDBACK_LOG_PATH         = 'posture_feedback.csv'
+FEEDBACK_LOG_PATH         = 'data/posture_feedback.csv'
 
 
 # ─────────────────────────────────────────────

@@ -180,6 +180,16 @@ print(f"\nBayesian Optimization with Optuna ({N_OPTUNA_TRIALS} trials, {N_CV_FOL
 
 skf = StratifiedKFold(n_splits=N_CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
 
+# print("\nDataset split summary:")
+# print(f"{'Class':<12} {'Train':>8} {'Test':>8} {'Total':>8}")
+# print("-" * 40)
+# for i, cls in enumerate(le.classes_):
+#     tr  = int(np.sum(y_train == i))
+#     te  = int(np.sum(y_test  == i))
+#     print(f"{cls:<12} {tr:>8} {te:>8} {tr+te:>8}")
+# print("-" * 40)
+# print(f"{'Total':<12} {len(y_train):>8} {len(y_test):>8} {len(y_encoded):>8}")
+
 def objective(trial):
     params = {
         'n_estimators':       trial.suggest_int('n_estimators', 100, 500),
