@@ -15,11 +15,11 @@ This project was built using **Google MediaPipe** for body landmark extraction (
 
 ## Key Features 
 
-*   **👁️ Real-Time Inference:** Processes webcam feeds using MediaPipe
-*   **🧠 Advanced Feature Engineering:** Utilizing specific anatomical feature extraction, such as *Nose-to-Shoulder Distance* (detects "turtle neck"), *Ear-Shoulder Asymmetry* (detects head tilting), and *Shoulder Width* (detects slouching).
-*   **🎯 Smart Thresholding:** Uses custom confidence thresholds (**Normal: 70%**, **Back: 80%**) to prevent model flickering and ensure high AI certainty before changing posture status.
-*   **⏱️ Temporal Smoothing & Timer:** Prevents rapid status switching and triggers a visual alert if poor posture persists for more than 10 seconds.
-*   **🔄 Active Learning Feedback:** Users can press the `f` key while the app is running to provide direct feedback to the AI. This data is saved to `dataset_feedback.csv` to retrain the model, allowing it to dynamically adapt to the user's unique habits.
+*   **Real-Time Inference:** Processes webcam feeds using MediaPipe
+*   **Advanced Feature Engineering:** Utilizing specific anatomical feature extraction, such as *Nose-to-Shoulder Distance* (detects "turtle neck"), *Ear-Shoulder Asymmetry* (detects head tilting), and *Shoulder Width* (detects slouching).
+*   **Smart Thresholding:** Uses custom confidence thresholds (**Normal: 70%**, **Back: 80%**) to prevent model flickering and ensure high AI certainty before changing posture status.
+*   **Temporal Smoothing & Timer:** Prevents rapid status switching and triggers a visual alert if poor posture persists for more than 10 seconds.
+*   **Active Learning Feedback:** Users can press the `f` key while the app is running to provide direct feedback to the AI. This data is saved to `dataset_feedback.csv` to retrain the model, allowing it to dynamically adapt to the user's unique habits.
 
 ---
 

@@ -1,32 +1,30 @@
-# Posture Classification - XGBoost (Normal / Baseline model, no Optuna tuning)
-# extract upper body points
+# Posture Classification - XGBoost
 
 # library
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.preprocessing import LabelEncoder
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from xgboost import XGBClassifier
+import optuna
 import joblib
 import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings('ignore')
 
-print("Posture Classification Training (baseline, no hyperparameter search)")
+print("Posture Classification Training")
 
 # 1. define (setting)
 DATASET_PATH        = 'data/dataset_postur_more.csv'
-MODEL_OUTPUT_PATH   = 'model/posture_xgboost_baseline.pkl'
+MODEL_OUTPUT_PATH   = 'model/posture_xgboost_v1.3.pkl'
+N_OPTUNA_TRIALS     = 60    
+N_CV_FOLDS          = 5
 TEST_SIZE           = 0.2
 RANDOM_STATE        = 67
-NORMAL_THRESHOLD    = 0.55  # threshold for prediction
-BACK_THRESHOLD      = 0.95
-
-N_ESTIMATORS   = 246
-LEARNING_RATE  = 0.212622
-MAX_DEPTH      = 8
+NORMAL_THRESHOLD = 0.55  # threshold for prediction
+BACK_THRESHOLD = 0.95
 
 # data loading
 print("\nLoading dataset...")
@@ -176,33 +174,84 @@ def make_sample_weights(y, normal_idx, normal_multiplier=1.0):
     return np.array([wdict[c] for c in y])
 
 
-sw_train = make_sample_weights(y_train, normal_idx, normal_multiplier=1.0)
+# 6. OPTUNA — CV-BASED
+print(f"\nBayesian Optimization with Optuna ({N_OPTUNA_TRIALS} trials, {N_CV_FOLDS}-fold CV)...")
+
+skf = StratifiedKFold(n_splits=N_CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
+
+def objective(trial):
+    params = {
+        'n_estimators':       trial.suggest_int('n_estimators', 100, 500),
+        'learning_rate':      trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
+        'max_depth':          trial.suggest_int('max_depth', 3, 10),
+        'subsample':          trial.suggest_float('subsample', 0.5, 1.0),
+        'colsample_bytree':   trial.suggest_float('colsample_bytree', 0.5, 1.0),
+        'gamma':              trial.suggest_float('gamma', 0.0, 5.0),
+        'min_child_weight':   trial.suggest_int('min_child_weight', 1, 10),
+        'reg_alpha':          trial.suggest_float('reg_alpha', 1e-4, 10.0, log=True),
+        'reg_lambda':         trial.suggest_float('reg_lambda', 1e-4, 10.0, log=True),
+        'random_state':       RANDOM_STATE,
+        'eval_metric':        'mlogloss',
+        'use_label_encoder':  False,
+    }
+    # Tune the Normal weight multiplier
+    normal_multiplier = trial.suggest_float('normal_multiplier', 0.8, 2.5)
+
+    cv_scores = []
+    for fold_train_idx, fold_val_idx in skf.split(X_train, y_train):
+        X_fold_tr, X_fold_val = X_train.iloc[fold_train_idx], X_train.iloc[fold_val_idx]
+        y_fold_tr, y_fold_val = y_train[fold_train_idx],     y_train[fold_val_idx]
+
+        sw = make_sample_weights(y_fold_tr, normal_idx, normal_multiplier)
+
+        model = XGBClassifier(**params)
+        model.fit(X_fold_tr, y_fold_tr, sample_weight=sw)
+
+        preds    = model.predict(X_fold_val)
+        cv_scores.append(accuracy_score(y_fold_val, preds))
+
+    return np.mean(cv_scores)
+
+
+optuna.logging.set_verbosity(optuna.logging.WARNING)
+study = optuna.create_study(direction='maximize')
+study.optimize(objective, n_trials=N_OPTUNA_TRIALS, show_progress_bar=True)
+
+print("\n" + "=" * 50)
+print("  Best Hyperparameters (Optuna CV)")
+print("=" * 50)
+for k, v in study.best_params.items():
+    print(f"  {k:<25}: {v}")
+print(f"\n  Best CV accuracy: {study.best_value * 100:.2f}%")
+print("=" * 50)
+
 
 # =========================================================
-# 6. TRAIN THE "NORMAL" (BASELINE) MODEL — NO OPTUNA SEARCH
+# 7. FINAL TRAINING + EXTENDED EVALUATION
+#    (learning curve w/ loss+accuracy, feature importance,
+#     confusion matrix)
 # =========================================================
-print("\nTraining baseline XGBoost model (fixed hyperparameters)...")
+print("\nMelatih ulang model final dengan parameter terbaik...")
 
-final_model = XGBClassifier(
-    n_estimators=N_ESTIMATORS,
-    learning_rate=LEARNING_RATE,
-    subsample = 0.61083,
-    colsample_bytree = 0.92626,
-    gamma = 0.2234555,
-    min_child_weight = 6,
-    normal_multiplier = 0.94148,
-    reg_lambda=0.533342,
-    reg_alpha=0.000803261,
-    max_depth=MAX_DEPTH,
-    random_state=RANDOM_STATE,
-    eval_metric=['mlogloss', 'merror'],   # merror -> accuracy = 1 - merror
-)
+# NOTE: XGBoost has no per-epoch "lr" schedule -> learning_rate is fixed
+# and is annotated on the plot instead of being drawn as a curve.
+# NOTE: XGBoost has no native "accuracy" eval metric -> we track 'merror'
+# (multiclass error) alongside 'mlogloss' and derive accuracy = 1 - merror.
+best_params = study.best_params.copy()
+normal_multiplier_final = best_params.pop('normal_multiplier', 1.0)
+best_params['random_state'] = RANDOM_STATE
+best_params['eval_metric']  = ['mlogloss', 'merror']
+
+final_model = XGBClassifier(**best_params)
+
+# use the tuned Normal-class weight multiplier on the final fit
+sw_train_final = make_sample_weights(y_train, normal_idx, normal_multiplier_final)
 
 eval_set = [(X_train, y_train), (X_test, y_test)]
 
 final_model.fit(
     X_train, y_train,
-    sample_weight=sw_train,
+    sample_weight=sw_train_final,
     eval_set=eval_set,
     verbose=False
 )
@@ -211,37 +260,43 @@ results = final_model.evals_result()
 epochs  = len(results['validation_0']['mlogloss'])
 x_axis  = range(epochs)
 
-train_loss = np.array(results['validation_0']['mlogloss'])
-val_loss   = np.array(results['validation_1']['mlogloss'])
+train_loss = results['validation_0']['mlogloss']
+val_loss   = results['validation_1']['mlogloss']
 train_acc  = 1 - np.array(results['validation_0']['merror'])
 val_acc    = 1 - np.array(results['validation_1']['merror'])
-lr_fixed   = np.full(epochs, LEARNING_RATE)  # constant per round (no schedule)
+lr_fixed   = best_params.get('learning_rate', None)
 
-print(f"\nFinal epoch -> loss: {train_loss[-1]:.4f} | val_loss: {val_loss[-1]:.4f} "
-      f"| accuracy: {train_acc[-1]*100:.2f}% | val_accuracy: {val_acc[-1]*100:.2f}% "
-      f"| lr (fixed): {LEARNING_RATE}")
+print(f"\nFinal epoch -> train_loss: {train_loss[-1]:.4f} | val_loss: {val_loss[-1]:.4f} "
+      f"| train_acc: {train_acc[-1]*100:.2f}% | val_acc: {val_acc[-1]*100:.2f}% "
+      f"| learning_rate (fixed): {lr_fixed}")
 
-# -----------------------------------------------------
-# COMBINED LEARNING CURVE PLOT (loss, accuracy, val_loss,
-# val_accuracy, lr all on one axes, like the reference figure)
-# -----------------------------------------------------
-fig, ax = plt.subplots(figsize=(8, 6))
+# --- PLOT: LEARNING CURVE (loss + accuracy side by side) ---
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
-ax.plot(x_axis, train_loss, label='loss', color='#1f77b4', linewidth=1.3)
-ax.plot(x_axis, train_acc, label='accuracy', color='#ff7f0e', linewidth=1.3)
-ax.plot(x_axis, val_loss, label='val_loss', color='#2ca02c', linewidth=1.3)
-ax.plot(x_axis, val_acc, label='val_accuracy', color='#d62728', linewidth=1.3)
-ax.plot(x_axis, lr_fixed, label='lr', color='#9467bd', linewidth=1.3)
+axes[0].plot(x_axis, train_loss, label='Train Loss', color='#1f77b4', linewidth=2)
+axes[0].plot(x_axis, val_loss, label='Val (Test) Loss', color='#d62728', linewidth=2)
+axes[0].set_xlabel('Epoch (Boosting Round)')
+axes[0].set_ylabel('Log Loss (mlogloss)')
+axes[0].set_title('Loss Curve')
+axes[0].legend()
+axes[0].grid(True, linestyle='--', alpha=0.6)
 
-ax.set_xlabel('Epoch')
-ax.set_ylim(0.0, 1.0)
-ax.set_xlim(0, epochs)
-ax.legend(loc='upper left')
-ax.grid(True, alpha=0.6)
-ax.set_title('Baseline method')
+axes[1].plot(x_axis, train_acc, label='Train Accuracy', color='#1f77b4', linewidth=2)
+axes[1].plot(x_axis, val_acc, label='Val (Test) Accuracy', color='#d62728', linewidth=2)
+axes[1].set_xlabel('Epoch (Boosting Round)')
+axes[1].set_ylabel('Accuracy (1 - merror)')
+axes[1].set_title('Accuracy Curve')
+axes[1].set_ylim(0, 1.02)
+axes[1].legend()
+axes[1].grid(True, linestyle='--', alpha=0.6)
 
+fig.suptitle(
+    f'XGBoost Learning Curve  |  fixed learning_rate = {lr_fixed:.5f}'
+    if lr_fixed is not None else 'XGBoost Learning Curve',
+    fontsize=13
+)
 plt.tight_layout()
-plt.savefig('learning_curve_combined.png', dpi=150)
+plt.savefig('learning_curve.png', dpi=150)
 plt.show()
 
 # Evaluasi Final
@@ -319,6 +374,7 @@ plt.tight_layout()
 plt.savefig('feature_importance.png', dpi=150)
 plt.show()
 
+
 print("\nTop 15 Feature Importances:")
 fi_desc = fi_df.sort_values('importance', ascending=False)
 for _, row in fi_desc.iterrows():
@@ -375,7 +431,7 @@ export_data = {
     'raw_features':       raw_features,
     'normal_idx':         normal_idx,
     'normal_threshold':   NORMAL_THRESHOLD,
-    'build_features_fn':  build_features,   # save the fn reference for inference
+    'build_features_fn':  build_features,   
     'TemporalSmoother':   TemporalSmoother,
 }
 joblib.dump(export_data, MODEL_OUTPUT_PATH)
