@@ -139,11 +139,21 @@ X_full = build_features(df)
 
 # Define the specific feature set
 features = [
+    # --- raw / temporal (moving-avg) group you were already using ---
     'y2', 'y5', 'z11', 'z12',
     'y2_y5_ratio', 'z11_z12_diff', 'z11_z12_ratio',
     'y2_diff', 'y5_diff', 'z11_diff', 'z12_diff',
     'y2_moving_avg', 'y5_moving_avg', 'z11_moving_avg', 'z12_moving_avg',
-    'y2_normalized', 'z11_normalized'
+    'y2_normalized', 'z11_normalized',
+
+    # --- scale-invariant geometric group (was being computed but discarded) ---
+    'nose_to_shoulder_mid_x', 'nose_to_shoulder_mid_y', 'nose_to_shoulder_mid_dist',
+    'shoulder_width',
+    'left_ear_shoulder_y_diff', 'right_ear_shoulder_y_diff', 'ear_shoulder_y_asymmetry',
+    'nose_left_ear_x_diff', 'nose_right_ear_x_diff',
+    'eye_level_diff',
+    'relative_nose_z', 'normalized_nose_z', 'neck_forward_angle',
+    'mean_visibility', 'min_visibility',
 ]
 
 X_full = X_full[features]
